@@ -1,0 +1,10 @@
+<view class="page">
+  <view class="header"><view class="eyebrow gold">BETTER WITH FRIENDS</view><view class="title">好手气，一起玩。</view><view class="subtitle spaced">只和游戏好友比一比，记录每一份小幸运。</view></view>
+  <view wx:if="{{demo}}" class="demo-badge">本地演示 · 含 2 位示例好友，不代表微信好友</view>
+  <view wx:if="{{error}}" class="error-box" bindtap="load">{{error}} · 点击重试</view>
+  <view class="rank-summary"><view><text class="muted">我的名次</text><view class="my-rank">{{myRank ? '#' + myRank : '—'}}</view></view><view class="rank-decoration">♧</view><view class="summary-right"><view>{{items.length}} 人的手气榜</view><view class="small muted spaced">按当前积分排序</view></view></view>
+  <view class="card rank-list"><view wx:for="{{items}}" wx:key="userId" class="rank-row {{item.isMe ? 'me' : ''}}" data-id="{{item.userId}}" bindlongpress="remove"><text class="rank-num {{item.rank <= 3 ? 'gold' : ''}}">{{item.rank}}</text><view class="avatar">{{item.initial}}</view><view class="rank-name"><text>{{item.nickname}}</text><text wx:if="{{item.isMe}}" class="badge">我</text></view><view class="rank-points">{{item.balance}}<text>积分</text></view></view><view wx:if="{{items.length <= 1}}" class="empty">邀请第一位好友，让手气榜热闹起来。</view></view>
+  <view class="muted small">{{asOf}} 更新 · 下拉刷新 · 长按好友可移除</view>
+  <view class="card spaced"><view class="section-title">邀请一位新朋友</view><view class="subtitle spaced">邀请有效期 24 小时，一次邀请可添加一位好友。</view><button class="primary spaced" disabled="{{busy || !ready}}" loading="{{busy}}" bindtap="create">生成邀请</button><view wx:if="{{invite}}"><view class="invite-token spaced" selectable>{{invite}}</view><view class="row spaced"><button class="secondary" bindtap="copy">复制邀请码</button><button class="primary" open-type="share">分享给朋友</button></view></view><view wx:if="{{demo}}" class="small muted spaced">演示数据只在本机。跨用户真实邀请需配置并部署云端。</view></view>
+  <view class="card"><view class="section-title">收到朋友的邀请？</view><input class="input spaced" placeholder="粘贴邀请码" value="{{incoming}}" bindinput="input" maxlength="100"/><t-button custom-class="spaced" theme="primary" variant="outline" block disabled="{{busy || !incoming || !ready}}" bindtap="accept">接受邀请，成为好友</t-button></view>
+</view>

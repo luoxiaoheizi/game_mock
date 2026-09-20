@@ -1,0 +1,1 @@
+<view class="die {{rolling ? 'rolling' : ''}}" aria-label="骰子 {{value}} 点"><view wx:for="{{dots}}" wx:key="i" class="pip {{item.on ? 'visible' : ''}} {{value === 1 ? 'red' : ''}}"></view></view>

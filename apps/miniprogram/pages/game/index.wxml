@@ -1,0 +1,22 @@
+<view class="game-page">
+  <view class="table-top">
+    <view class="row"><view><view class="eyebrow">DICE CLUB</view><view class="table-title">一掷，见趣。</view></view><view class="balance-box"><text class="balance-caption">我的积分</text><text class="balance-number">{{balance}}</text></view></view>
+    <view class="table-note"><text>{{demo ? '本地演示 · 积分仅保存在本机' : '纯虚拟积分 · 每局独立开奖'}}</text><text bindtap="rules">规则 ⓘ</text></view>
+    <view class="dice-stage"><dice-face wx:for="{{dice}}" wx:for-item="point" wx:for-index="idx" wx:key="idx" value="{{point}}" rolling="{{rolling}}" /></view>
+    <view class="stage-hint">{{rolling ? '骰子正在投掷…' : pending ? '有一局等待确认，请点击下方恢复' : '选择筹码，点选下方玩法'}}</view>
+  </view>
+  <view class="bet-area">
+    <view wx:if="{{error}}" class="error-box" bindtap="load">{{error}} · 点击刷新</view>
+    <view class="bet-grid major"><view wx:for="{{main}}" wx:key="key" class="bet-cell {{item.stake ? 'selected' : ''}}" data-key="{{item.key}}" bindtap="add" bindlongpress="subtract"><text class="cell-title">{{item.title}}</text><text class="cell-odds">{{item.odds}}</text><text wx:if="{{item.stake}}" class="stake-tag">{{item.stake}}</text></view></view>
+    <view class="bet-label"><text>出现某点</text><text>出现次数决定倍数</text></view>
+    <view class="bet-grid six"><view wx:for="{{singles}}" wx:key="key" class="bet-cell {{item.stake ? 'selected' : ''}}" data-key="{{item.key}}" bindtap="add" bindlongpress="subtract"><text class="cell-title">{{item.title}}</text><text wx:if="{{item.stake}}" class="stake-tag">{{item.stake}}</text></view></view>
+    <view class="bet-label"><text>总点数</text><text>三颗骰子之和</text></view>
+    <view class="bet-grid seven"><view wx:for="{{sums}}" wx:key="key" class="bet-cell {{item.stake ? 'selected' : ''}}" data-key="{{item.key}}" bindtap="add" bindlongpress="subtract"><text class="cell-title">{{item.title}}</text><text class="cell-odds">{{item.odds}}</text><text wx:if="{{item.stake}}" class="stake-tag">{{item.stake}}</text></view></view>
+    <view class="bet-label"><text>指定豹子</text><text>三个相同点数 · 净赢 150 倍</text></view>
+    <view class="bet-grid six"><view wx:for="{{triples}}" wx:key="key" class="bet-cell triple-cell {{item.stake ? 'selected' : ''}}" data-key="{{item.key}}" bindtap="add" bindlongpress="subtract"><text class="cell-title">{{item.title}}</text><text wx:if="{{item.stake}}" class="stake-tag">{{item.stake}}</text></view></view>
+    <view class="controls card"><view class="row"><view class="chip-list"><view wx:for="{{chips}}" wx:key="*this" class="chip {{chip === item ? 'active' : ''}}" data-value="{{item}}" bindtap="chooseChip">{{item}}</view></view><text class="link" bindtap="clear">清空</text></view><view class="row spaced"><view><view class="muted">本局投入</view><view class="stake-total">{{total}} <text>积分</text></view></view><button class="roll-button" bindtap="play" loading="{{rolling}}" disabled="{{rolling || !ready || (!total &amp;&amp; !pending)}}">{{pending ? '确认本局结果' : '投掷骰子'}}</button></view><view class="small muted spaced">每局上限 500 · 长按玩法减少筹码</view></view>
+    <view class="row history-heading"><text class="section-title">最近几掷</text><text class="muted">独立随机开奖</text></view>
+    <view class="card"><view wx:if="{{!history.length}}" class="empty">从第一掷开始，记录你的手气。</view><view wx:for="{{history}}" wx:key="roundId" class="history-row"><view><text class="history-dice">{{item.dice[0]}} · {{item.dice[1]}} · {{item.dice[2]}}</text><text class="badge">{{item.triple ? '豹子' : item.sum >= 11 ? '大' : '小'}} {{item.sum}}</text></view><text class="{{item.netChange >= 0 ? 'positive' : 'negative'}}">{{item.netText}}</text></view></view>
+  </view>
+</view>
+<view wx:if="{{result}}" class="modal-mask" catchtouchmove="noop"><view class="modal"><view class="eyebrow gold">ROUND COMPLETE</view><view class="title spaced">{{result.netChange > 0 ? '这一掷，手气不错' : result.netChange === 0 ? '这一掷，平分秋色' : '下一掷，再试手气'}}</view><view class="result-dice"><dice-face wx:for="{{result.dice}}" wx:for-item="point" wx:for-index="idx" wx:key="idx" value="{{point}}" /></view><view class="result-net {{result.netChange >= 0 ? 'positive' : 'negative'}}">{{result.netText}} <text>积分</text></view><view class="muted">投入 {{result.stakeTotal}} · 返还 {{result.payoutTotal}}（含本金）</view><view class="divider"></view><view wx:for="{{result.items}}" wx:key="label" class="row result-item"><text>{{item.label}} · {{item.stake}}</text><text class="{{item.payout ? 'positive' : 'muted'}}">返还 {{item.payout}}</text></view><button class="primary spaced" bindtap="closeResult">收下这一掷</button></view></view>

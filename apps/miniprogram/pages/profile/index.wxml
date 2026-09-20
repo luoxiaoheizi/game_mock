@@ -1,0 +1,10 @@
+<view class="page">
+  <view wx:if="{{demo}}" class="demo-badge">本地演示 · 昵称与积分保存在本机</view>
+  <view wx:if="{{error}}" class="error-box" bindtap="load">{{error}} · 点击重试</view>
+  <view class="profile-header"><view class="profile-avatar">{{initial}}</view><view><view class="profile-name">{{nickname || '正在读取资料…'}}</view><view class="subtitle">每一掷，都是新的开始。</view></view><text class="edit-name" bindtap="edit">编辑</text></view>
+  <view class="card stats"><view><text>{{wallet.rounds}}</text><text>投掷局数</text></view><view><text>{{wallet.wins}}</text><text>命中局数</text></view><view><text>{{wallet.totalPayout}}</text><text>累计返还</text></view></view>
+  <view class="profile-note"><view class="eyebrow gold">PLAY FOR THE MOMENT</view><view>好手气，是生活里的小惊喜。</view><text>轻松玩一会儿，快乐刚刚好。</text></view>
+  <view class="card settings"><view class="setting-row" bindtap="edit"><text>我的昵称</text><view><text class="muted">{{nickname}}</text><text class="chevron">›</text></view></view><view class="setting-row" bindtap="wallet"><text>签到与积分奖励</text><text class="chevron">›</text></view><view class="setting-row"><text>开奖震动反馈</text><switch checked="{{haptics}}" color="#236a50" bindchange="toggle"/></view><view class="setting-row" bindtap="rules"><text>玩法与积分说明</text><text class="chevron">›</text></view></view>
+  <view class="footnote"><view>骰趣 DICE CLUB · 1.0.0</view><view>纯虚拟积分娱乐，不涉及真实钱财</view></view>
+</view>
+<view wx:if="{{editing}}" class="modal-mask" catchtouchmove="noop"><view class="modal"><view class="title">换个喜欢的昵称</view><view class="subtitle spaced">2～12 个字符，支持中文、字母和数字</view><input class="input spaced" type="nickname" value="{{editName}}" bindinput="input" maxlength="24" placeholder="你的新昵称"/><view class="modal-actions"><button class="secondary" bindtap="close" disabled="{{busy}}">取消</button><button class="primary" bindtap="save" loading="{{busy}}" disabled="{{busy}}">保存昵称</button></view></view></view>

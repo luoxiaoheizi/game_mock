@@ -1,0 +1,7 @@
+{
+  "name": "dice-club", "version": "1.0.0", "private": true,
+  "scripts": {"build":"node scripts/build.mjs","typecheck":"tsc --noEmit","test":"node scripts/build.mjs && node scripts/test.mjs","check":"npm run typecheck && npm test"},
+  "dependencies": {"@cloudbase/node-sdk":"^3.0.0","wx-server-sdk":"^3.0.0","tdesign-miniprogram":"^1.0.0"},
+  "devDependencies": {"@types/node":"^22.0.0","esbuild":"^0.25.0","miniprogram-api-typings":"^4.0.0","typescript":"^5.7.0"},
+  "engines": {"node":">=22"}
+}

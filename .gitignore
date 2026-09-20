@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.test-build/
+project.private.config.json
+*.log
+.env*

@@ -1,0 +1,6 @@
+{
+  "description":"骰趣 · 纯虚拟积分骰宝",
+  "appid":"touristappid","projectname":"dice-club","compileType":"miniprogram",
+  "miniprogramRoot":"dist/miniprogram/","cloudfunctionRoot":"dist/cloudfunctions/",
+  "setting":{"es6":true,"minified":true,"urlCheck":true},"libVersion":"latest"
+}
