@@ -1,0 +1,10 @@
+{
+  "profile": "product-admin",
+  "sourceRoots": ["apps/miniprogram"],
+  "canonicalMap": "UX-CONTRACT.md",
+  "requiredCapabilities": ["Table Selection", "Select/Listbox", "Date", "Form", "Scrollbar", "Toast", "CRUD"],
+  "ownership": {"Select/Listbox": "native", "Date": "services/api.ts dateText"},
+  "requiredCommands": ["check", "visual"],
+  "commands": {"check": "npm run check", "visual": "node scripts/visual-review.mjs"},
+  "evidence": {"crudFullFlow": "tests/ui.test.ts", "failurePaths": "tests/ui.test.ts"}
+}

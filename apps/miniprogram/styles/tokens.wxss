@@ -1,0 +1,28 @@
+/* 运行时唯一色彩源；DESIGN.md 镜像语义与用途。 */
+page {
+  --color-primary: #205c48;
+  --color-ink: #173c31;
+  --color-muted: #5b7066;
+  --color-felt: #123e32;
+  --color-background: #f3f5ef;
+  --color-surface: #ffffff;
+  --color-soft: #e8eee4;
+  --color-border: #d9e2d6;
+  --color-gold: #b88b43;
+  --color-gold-soft: #f3e5c9;
+  --color-on-felt: #f8f3e5;
+  --color-on-felt-muted: #bfd1c3;
+  --color-danger: #a54236;
+  --color-danger-soft: #fff0eb;
+  --color-focus: #a56b19;
+  --color-overlay: rgba(9, 29, 23, .68);
+  --color-scrollbar: #a3b5a4;
+  --font-body: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-display: "STSong", "Songti SC", "SimSun", serif;
+  --font-numeric: "DIN Alternate", "Bahnschrift", -apple-system, sans-serif;
+  --radius-control: 16rpx;
+  --radius-card: 28rpx;
+  --radius-dialog: 36rpx;
+  --space-page: 32rpx;
+  --space-section: 32rpx;
+}

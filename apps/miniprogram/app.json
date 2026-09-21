@@ -1,7 +1,7 @@
 {
   "pages":["pages/game/index","pages/wallet/index","pages/ranking/index","pages/profile/index"],
-  "window":{"navigationBarTitleText":"骰趣","navigationBarBackgroundColor":"#102e2a","navigationBarTextStyle":"white","backgroundColor":"#f5f4ef","enablePullDownRefresh":true},
-  "tabBar":{"color":"#838b87","selectedColor":"#176852","backgroundColor":"#ffffff","borderStyle":"white","list":[
+  "window":{"navigationBarTitleText":"骰趣","navigationBarBackgroundColor":"#123e32","navigationBarTextStyle":"white","backgroundColor":"#f3f5ef","enablePullDownRefresh":true},
+  "tabBar":{"color":"#5b7066","selectedColor":"#205c48","backgroundColor":"#ffffff","borderStyle":"white","list":[
     {"pagePath":"pages/game/index","text":"骰宝"},{"pagePath":"pages/wallet/index","text":"钱包"},{"pagePath":"pages/ranking/index","text":"好友排行"},{"pagePath":"pages/profile/index","text":"我的"}
   ]},
   "usingComponents":{"t-button":"/miniprogram_npm/tdesign-miniprogram/button/button","dice-face":"/components/dice/index"},

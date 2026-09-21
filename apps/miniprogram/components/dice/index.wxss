@@ -1,1 +1,17 @@
-:host{display:inline-block}.die{width:110rpx;height:110rpx;padding:16rpx;background:linear-gradient(145deg,#fffef8,#e4ddc8);border-radius:22rpx;box-shadow:0 10rpx 0 #c7bea5,0 18rpx 20rpx #08231e70;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:5rpx;box-sizing:border-box}.pip{width:100%;height:100%;border-radius:50%;background:transparent}.visible{background:#193d34;box-shadow:inset 0 2rpx 2rpx #091c1780}.red.visible{background:#bd5944}.rolling{animation:tumble .22s ease-in-out infinite alternate}@keyframes tumble{from{transform:translateY(0) rotate(-14deg)}to{transform:translateY(-24rpx) rotate(22deg)}}
+:host { display:inline-block; }
+.die { width:104rpx; height:104rpx; padding:12rpx; background:radial-gradient(ellipse at 32% 22%,#ffffff 0,#faf7ee 58%,#e6dfcd 100%); border-radius:28rpx; box-shadow:inset 0 2rpx 5rpx rgba(255,255,255,.85),inset 0 -3rpx 6rpx rgba(134,112,77,.12),0 4rpx 2rpx #b9aa88,0 9rpx 14rpx rgba(9,29,23,.2); display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:3rpx; box-sizing:border-box; }
+.pip { width:100%; height:100%; border-radius:50%; background:transparent; }.pip.visible { background:var(--color-ink); }.pip.red.visible { background:var(--color-danger); }
+.rolling { animation:tumble .22s ease-in-out infinite alternate; }
+@keyframes tumble { from { transform:translateY(0) rotate(-14deg); } to { transform:translateY(-18rpx) rotate(18deg); } }
+@media (prefers-reduced-motion:reduce) { .rolling { animation:none; } }
+.spatial-die { width:var(--dice-size,70rpx); height:var(--dice-size,70rpx); perspective:600rpx; }
+.dice-cube { position:relative; width:100%; height:100%; transform-style:preserve-3d; transform:rotateX(-23deg) rotateY(-26deg) rotateZ(-5deg); }
+/* 六个圆角面之间存在切口；封闭白色内核填满切口，随骰子一起旋转。 */
+.dice-core { position:absolute; inset:0; transform-style:preserve-3d; transform:scale3d(.94,.94,.94); }
+.core-face { position:absolute; inset:0; background:#fff; backface-visibility:hidden; }
+.cube-face { box-sizing:border-box; position:absolute; inset:0; display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:3rpx; padding:9rpx; border:1rpx solid #eee9dd; border-radius:15rpx; background:radial-gradient(ellipse at 30% 22%,#ffffff 0,#faf7ef 56%,#e6dfd0 100%); backface-visibility:hidden; box-shadow:inset 2rpx 2rpx 5rpx rgba(255,255,255,.9),inset -2rpx -3rpx 6rpx rgba(148,130,99,.16); }
+.face-0 { transform:translateZ(calc(var(--dice-size,70rpx) / 2)); }.face-1 { transform:rotateY(180deg) translateZ(calc(var(--dice-size,70rpx) / 2)); }.face-2 { transform:rotateY(90deg) translateZ(calc(var(--dice-size,70rpx) / 2)); }.face-3 { transform:rotateY(-90deg) translateZ(calc(var(--dice-size,70rpx) / 2)); }.face-4 { transform:rotateX(90deg) translateZ(calc(var(--dice-size,70rpx) / 2)); }.face-5 { transform:rotateX(-90deg) translateZ(calc(var(--dice-size,70rpx) / 2)); }
+.cube-face .pip.visible { background:#30362d; box-shadow:inset 0 1rpx 2rpx rgba(0,0,0,.2),0 1rpx 1rpx rgba(255,255,255,.7); }.cube-face .pip.red.visible { background:#b23b30; }
+.cube-rolling { animation:cube-tumble .6s linear infinite; }
+@keyframes cube-tumble { 0% { transform:rotateX(-23deg) rotateY(-26deg) rotateZ(-5deg); } 50% { transform:rotateX(157deg) rotateY(154deg) rotateZ(110deg); } 100% { transform:rotateX(337deg) rotateY(334deg) rotateZ(355deg); } }
+@media (prefers-reduced-motion:reduce) { .cube-rolling { animation:none; } }
