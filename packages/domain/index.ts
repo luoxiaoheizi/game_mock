@@ -7,7 +7,13 @@ export function check(ok: unknown, code: string, message: string): asserts ok {
   if (!ok) throw new BusinessError(code, message);
 }
 export const RULES = {
-  version:'sicbo-v1', initial:1000, daily:500, adReward:200, adDailyLimit:3,
+  version:'sicbo-v1', initial:500, adRewards:[200,500,1000], adDailyLimit:3, shareReward:100,
+  signIn:{
+    version:'streak-v1',
+    first30:[100,100,300,200,200,200,500,200,200,500,200,300,200,200,500,200,200,300,200,500,300,200,200,300,500,200,300,200,200,1000],
+    after30:500,
+    milestones:{66:666,88:888,100:1000} as Record<number,number>
+  },
   chips:[10,50,100], maxStake:500, maxBalance:1_000_000_000,
   // 净赢倍数：命中时另返该项本金。项目娱乐规则，不代表任何场所赔率。
   big:1, small:1, anyTriple:24, exactTriple:150,
@@ -53,6 +59,10 @@ export function settle(bets: Bet[], dice: number[]) {
   return {dice,sum,triple,items,stakeTotal,payoutTotal,netChange:payoutTotal-stakeTotal};
 }
 export function dayKey(time: number): string { return new Date(time+8*3600_000).toISOString().slice(0,10); }
+export function signInReward(day:number):number {
+  check(Number.isSafeInteger(day)&&day>0,'INVALID_ARGUMENT','连续签到天数无效');
+  return RULES.signIn.first30[day-1]??RULES.signIn.milestones[day]??RULES.signIn.after30;
+}
 export function validNickname(value: unknown): string {
   check(typeof value==='string','INVALID_ARGUMENT','请输入昵称');
   const name=value.trim();

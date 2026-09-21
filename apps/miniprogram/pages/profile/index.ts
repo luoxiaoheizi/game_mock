@@ -12,6 +12,6 @@ Page({
   async save(){if(this.data.busy)return;try{const nickname=validNickname(this.data.editName);this.setData({busy:true,formError:''});const r=await api('user.updateNickname',{nickname,profileVersion:this.data.profileVersion});if(session.snapshot)session.snapshot.user=r.user;this.setData({editing:false,nameFocused:false});await this.load();toast('昵称已更新');}catch(e){this.setData({formError:(e as Error).message,nameFocused:true});await this.load();}finally{this.setData({busy:false});}},
   toggle(e:any){const haptics=!!e.detail.value;wx.setStorageSync(storageKey('haptics'),haptics);this.setData({haptics});},
   wallet(){wx.switchTab({url:'/pages/wallet/index'});},
-  rules(){wx.showModal({title:'关于骰趣',showCancel:false,content:'三颗骰子，每局独立开奖。所有积分仅供游戏体验，不可充值、提现、兑换或转让。大小遇豹子不中奖，其他玩法按各自规则独立结算。净赢倍数不包含退回本金。每日签到赠送 500 积分，完整观看视频奖励 200 积分，每天最多 3 次。'});},
+  rules(){wx.showModal({title:'关于骰趣',showCancel:false,content:'三颗骰子，每局独立开奖。所有积分仅供游戏体验，不可充值、提现、兑换或转让。大小遇豹子不中奖，其他玩法按各自规则独立结算。净赢倍数不包含退回本金。新用户赠送 500 积分；签到按连续天数发奖，完整奖励表见钱包，断签从第 1 天重新计算。完整观看视频每天最多 3 次，依次奖励 200、500、1000 分。每次分享给好友或群聊后，在钱包自行确认领取 100 分，不限次数。'});},
   noop(){}
 });

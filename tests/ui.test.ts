@@ -26,19 +26,57 @@ function harness(){
   function page(name:string){load(path.join(root,'pages',name,'index.js'));const instance={...definition,data:clone(definition.data),setData(values:any){Object.assign(this.data,clone(values));}};instance.onLoad?.();return instance;}
   return {page,wx,storage,messages,api:()=>load(path.join(root,'services/api.js')),advance:(ms:number)=>{clock.now+=ms;for(const f of timers.values())f();}};
 }
+
+test('广告三档奖励在观看前、观看中和到账后同步，跳过不升级',async()=>{
+  const h=harness(),wallet=h.page('wallet');await wallet.onShow();let total=500;
+  for(const amount of [200,500,1000]){
+    assert.equal(wallet.data.rewards.adNextAmount,amount);
+    await wallet.watch();assert.equal(wallet.data.adAmount,amount);
+    wallet.cancelDemo();h.advance(16000);await wallet.watch();h.advance(6000);await wallet.completeDemo();
+    total+=amount;assert.equal(wallet.data.balance,total);h.advance(16000);
+  }
+  assert.equal(wallet.data.rewards.adNextAmount,0);assert.equal(wallet.data.rewards.adCount,3);
+  h.advance(86400_000);await wallet.load();assert.equal(wallet.data.rewards.adNextAmount,200);
+});
+
+test('分享不会自动发奖，取消不加分，确认可重复领取，好友页共用钱包确认入口',async()=>{
+  const h=harness(),wallet=h.page('wallet');await wallet.onShow();
+  const first=wallet.onShareAppMessage();assert.equal(first.path,'/pages/game/index');await first.promise;
+  await wallet.onShow();assert.equal(wallet.data.pendingShare,true);assert.equal(wallet.data.balance,500);
+  wallet.cancelShare();assert.equal(wallet.data.pendingShare,false);await wallet.confirmShare();assert.equal(wallet.data.balance,500);
+  for(let i=0;i<4;i++){
+    await wallet.onShareAppMessage().promise;await wallet.onShow();
+    await Promise.all([wallet.confirmShare(),wallet.confirmShare()]);assert.equal(wallet.data.balance,600+i*100);
+  }
+  const ranking=h.page('ranking');await ranking.onShow();ranking.setData({invite:'invite_test_123'});
+  const shared=ranking.onShareAppMessage();assert.ok(shared.path.includes('invite=invite_test_123'));await shared.promise;
+  await ranking.onShow();assert.equal(ranking.data.pendingShare,true);
+  await wallet.onShow();await wallet.confirmShare();assert.equal(wallet.data.balance,1000);
+  assert.equal(wallet.data.ledgers[0].title,'分享奖励（自行确认）');
+});
+
+test('分享确认响应丢失后保留原请求，返回页面重试不重复发奖',async()=>{
+  const h=harness(),wallet=h.page('wallet');await wallet.onShow();await wallet.onShareAppMessage().promise;await wallet.onShow();
+  const key=h.api().storageKey('pending-share'),pending=h.storage.get(key);
+  await h.api().api('share.claim',{sessionId:pending.id,confirmed:true},pending.id);
+  h.storage.set(key,{...pending,confirmed:true});await wallet.onShow();
+  wallet.cancelShare();assert.equal(wallet.data.pendingShare,true);
+  await wallet.confirmShare();assert.equal(wallet.data.balance,600);assert.equal(wallet.data.pendingShare,false);
+  assert.equal(wallet.data.ledgers.filter((v:any)=>v.kind==='SHARE_REWARD').length,1);
+});
 test('编译产物四页集成：下注、钱包、签到、广告、改昵称与排行共享同一状态',async()=>{
-  const h=harness(),game=h.page('game');await game.onShow();assert.equal(game.data.balance,1000);assert.equal(game.data.singles.length,6);assert.equal(game.data.sums.length,14);
+  const h=harness(),game=h.page('game');await game.onShow();assert.equal(game.data.balance,500);assert.equal(game.data.singles.length,6);assert.equal(game.data.sums.length,14);
   game.add({currentTarget:{dataset:{key:'SMALL_0'}}});assert.equal(game.data.total,10);
   await game.play();assert.ok(game.data.result);assert.equal(game.data.pending,false);assert.equal(game.data.rolling,false);
   const afterBet=game.data.balance;
   const wallet=h.page('wallet');await wallet.onShow();assert.equal(wallet.data.balance,afterBet);
-  await wallet.sign();assert.equal(wallet.data.balance,afterBet+500);await wallet.sign();assert.equal(wallet.data.balance,afterBet+500);
-  await wallet.watch();assert.equal(wallet.data.showAd,true);wallet.cancelDemo();await wallet.load();assert.equal(wallet.data.balance,afterBet+500);
-  h.advance(16000);await wallet.watch();h.advance(6000);assert.equal(wallet.data.remaining,0);await wallet.completeDemo();assert.equal(wallet.data.balance,afterBet+700);assert.equal(wallet.data.rewards.adCount,1);
+  await wallet.sign();assert.equal(wallet.data.balance,afterBet+100);await wallet.sign();assert.equal(wallet.data.balance,afterBet+100);
+  await wallet.watch();assert.equal(wallet.data.showAd,true);wallet.cancelDemo();await wallet.load();assert.equal(wallet.data.balance,afterBet+100);
+  h.advance(16000);await wallet.watch();h.advance(6000);assert.equal(wallet.data.remaining,0);await wallet.completeDemo();assert.equal(wallet.data.balance,afterBet+300);assert.equal(wallet.data.rewards.adCount,1);
   const profile=h.page('profile');await profile.onShow();profile.edit();profile.input({detail:{value:'小熊好运'}});await profile.save();assert.equal(profile.data.nickname,'小熊好运');
   const ranking=h.page('ranking');await ranking.onShow();assert.equal(ranking.data.items.length,3);
-  const me=ranking.data.items.find((v:any)=>v.isMe);assert.equal(me.nickname,'小熊好运');assert.equal(me.balance,afterBet+700);
-  await game.onShow();assert.equal(game.data.balance,afterBet+700);
+  const me=ranking.data.items.find((v:any)=>v.isMe);assert.equal(me.nickname,'小熊好运');assert.equal(me.balance,afterBet+300);
+  await game.onShow();assert.equal(game.data.balance,afterBet+300);
   assert.ok(h.storage.has('dice-club-demo-v1'));
 });
 test('客户端恢复已提交但响应丢失的局，不重新开奖或重复扣款',async()=>{
@@ -58,9 +96,9 @@ test('原生广告完成、跳过、加载失败的客户端事件分支',async(
     show:async()=>{if(behavior==='error'){error?.();throw Error('no fill');}h.advance(6000);close?.({isEnded:behavior==='complete'});}
   });
   wallet.setData({demo:false,rewards:{...wallet.data.rewards,adUnitId:'adunit-test'}});
-  await wallet.watch();assert.equal(wallet.data.busy,false);assert.ok(h.messages.some(v=>v.includes('未完整观看')));assert.equal((await h.api().api('wallet.get')).wallet.balance,1000);
-  h.advance(16000);behavior='error';await wallet.watch();assert.equal(wallet.data.busy,false);assert.equal(loads,0);assert.equal((await h.api().api('wallet.get')).wallet.balance,1000);
-  h.advance(16000);behavior='complete';await wallet.watch();assert.equal((await h.api().api('wallet.get')).wallet.balance,1200);
+  await wallet.watch();assert.equal(wallet.data.busy,false);assert.ok(h.messages.some(v=>v.includes('未完整观看')));assert.equal((await h.api().api('wallet.get')).wallet.balance,500);
+  h.advance(16000);behavior='error';await wallet.watch();assert.equal(wallet.data.busy,false);assert.equal(loads,0);assert.equal((await h.api().api('wallet.get')).wallet.balance,500);
+  h.advance(16000);behavior='complete';await wallet.watch();assert.equal((await h.api().api('wallet.get')).wallet.balance,700);
 });
 test('页面事件绑定和组件引用完整，前端打包没有 Node.js 内置模块',()=>{
   const h=harness();
@@ -125,4 +163,16 @@ test('立体骰子每种正面都有六个不同点面，相对两面之和为�
     assert.equal(state.data.sides?.length,6);const counts=state.data.sides.map((v:any)=>v.dots.filter((d:any)=>d.on).length);
     assert.equal(counts[0],value);assert.equal(new Set(counts).size,6);assert.equal(counts[0]+counts[1],7);assert.equal(counts[2]+counts[3],7);assert.equal(counts[4]+counts[5],7);
   }
+});
+test('钱包展示按天变化的签到奖励、完整奖励表和断签重置',async()=>{
+  const h=harness(),wallet=h.page('wallet');await wallet.onShow();
+  assert.equal(wallet.data.balance,500);assert.equal(wallet.data.rewards.dailyAmount,100);
+  wallet.toggleSignRules();assert.equal(wallet.data.signRulesOpen,true);assert.equal(wallet.data.first30Rewards[29].amount,1000);
+  const expected=[100,100,300,200,200,200,500,200,200,500];let total=500;
+  for(let day=1;day<=10;day++){
+    await wallet.load();assert.equal(wallet.data.rewards.dailyDay,day);assert.equal(wallet.data.rewards.dailyAmount,expected[day-1]);
+    await wallet.sign();total+=expected[day-1];assert.equal(wallet.data.balance,total);assert.equal(wallet.data.rewards.signed,true);
+    if(day<10)h.advance(86400_000);
+  }
+  h.advance(2*86400_000);await wallet.load();assert.equal(wallet.data.rewards.dailyDay,1);assert.equal(wallet.data.rewards.dailyAmount,100);
 });

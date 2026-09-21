@@ -1,4 +1,4 @@
-import {BusinessError,check,dayKey,normalizeBets,RULES,settle,validNickname} from '../../../packages/domain';
+import {BusinessError,check,dayKey,normalizeBets,RULES,settle,signInReward,validNickname} from '../../../packages/domain';
 import type {Request,Response,Wallet,User} from '../../../packages/contracts';
 import type {Store,Tx} from './store';
 
@@ -48,7 +48,7 @@ export class GameService {
           await tx.set('wallets',uid,w);
           await tx.set('friend_lists',uid,{ids:[],lastInviteAt:0});
         });
-        return this.bootstrap(uid,date);
+        return this.bootstrap(uid,date,now);
       }
       case 'user.updateNickname': {
         const nickname=validNickname(p.nickname);
@@ -93,8 +93,9 @@ export class GameService {
       case 'wallet.claimDaily': return this.db.transaction(async tx=>{
         const key=id(uid,date), old=await tx.get('daily_claims',key);if(old)return {...old,alreadyClaimed:true};
         const w=await this.wallet(tx,uid),previous=await tx.get('daily_claims',id(uid,dayKey(now-86400_000)));
-        await this.ledger(tx,w,'SIGN_IN',RULES.daily,key,now); w.version++;
-        const reward={date,streak:(previous?.streak??0)+1,amount:RULES.daily,wallet:w,alreadyClaimed:false};
+        const streak=(previous?.streak??0)+1,amount=signInReward(streak);
+        await this.ledger(tx,w,'SIGN_IN',amount,key,now); w.version++;
+        const reward={date,streak,amount,ruleVersion:RULES.signIn.version,wallet:w,alreadyClaimed:false};
         await tx.set('wallets',uid,w);await tx.set('daily_claims',key,reward);return reward;
       });
       case 'ad.start': {
@@ -105,7 +106,7 @@ export class GameService {
           const usage=await tx.get('ad_usage',id(uid,date))??{count:0,lastStartAt:0};
           check(usage.count<RULES.adDailyLimit,'AD_LIMIT','今日广告奖励次数已用完');
           check(!usage.lastStartAt||now-usage.lastStartAt>=this.options.adCooldownMs,'RATE_LIMITED','请稍后再观看广告');
-          const session={sessionId:r.requestId,userId:uid,date,startedAt:now,expiresAt:now+600_000,claimed:false};
+          const session={sessionId:r.requestId,userId:uid,date,amount:RULES.adRewards[usage.count],startedAt:now,expiresAt:now+600_000,claimed:false};
           usage.lastStartAt=now;
           await tx.set('ad_usage',id(uid,date),usage);await tx.set('ad_sessions',key,session);return session;
         });
@@ -122,12 +123,29 @@ export class GameService {
           check(now-session.startedAt>=this.options.adMinSeconds*1000,'AD_TOO_EARLY','观看时间不足，暂不能领取');
           const usage=await tx.get('ad_usage',id(uid,date))??{count:0,lastStartAt:0};
           check(usage.count<RULES.adDailyLimit,'AD_LIMIT','今日广告奖励次数已用完');
-          const w=await this.wallet(tx,uid);await this.ledger(tx,w,'AD_REWARD',RULES.adReward,key,now);w.version++;usage.count++;
-          const result={amount:RULES.adReward,wallet:w,count:usage.count};
+          const amount=RULES.adRewards[usage.count];
+          const w=await this.wallet(tx,uid);await this.ledger(tx,w,'AD_REWARD',amount,key,now);w.version++;usage.count++;
+          const result={amount,wallet:w,count:usage.count};
           await tx.set('wallets',uid,w);await tx.set('ad_usage',id(uid,date),usage);await tx.set('ad_sessions',key,{...session,claimed:true,result});
           return result;
         });
       }
+      case 'share.start': return this.db.transaction(async tx=>{
+        await this.wallet(tx,uid);
+        const key=id(uid,r.requestId),old=await tx.get('share_sessions',key);if(old)return old;
+        const session={sessionId:r.requestId,userId:uid,createdAt:now,claimed:false};
+        await tx.set('share_sessions',key,session);return session;
+      });
+      case 'share.claim': return this.db.transaction(async tx=>{
+        const key=id(uid,requiredId(p.sessionId)),session=await tx.get('share_sessions',key);
+        check(session,'NOT_FOUND','分享记录不存在，请重新发起分享');
+        if(session.claimed)return session.result;
+        // 用户选择自报确认；不将转发面板打开或客户端确认当成微信送达证明。
+        check(p.confirmed===true,'SHARE_UNCONFIRMED','请先确认已分享');
+        const w=await this.wallet(tx,uid);await this.ledger(tx,w,'SHARE_REWARD',RULES.shareReward,key,now);w.version++;
+        const result={amount:RULES.shareReward,wallet:w,confirmation:'self-reported'};
+        await tx.set('wallets',uid,w);await tx.set('share_sessions',key,{...session,claimed:true,confirmedAt:now,result});return result;
+      });
       case 'friend.createInvite': {
         const token=this.options.token();
         return this.db.transaction(async tx=>{
@@ -181,10 +199,18 @@ export class GameService {
       default: throw new BusinessError('INVALID_ACTION','接口不存在');
     }
   }
-  private async bootstrap(uid:string,date:string) {
+  private async bootstrap(uid:string,date:string,now:number) {
     const daily=await this.db.get('daily_claims',id(uid,date));
-    const previous=await this.db.get('daily_claims',id(uid,dayKey(this.options.now()-86400_000)));
+    const previous=await this.db.get('daily_claims',id(uid,dayKey(now-86400_000)));
     const usage=await this.db.get('ad_usage',id(uid,date));
-    return {user:await this.db.get('users',uid),wallet:await this.wallet(this.db,uid),rules:RULES,mode:this.options.mode,rewards:{signed:!!daily,streak:daily?.streak??previous?.streak??0,adCount:usage?.count??0,adEnabled:this.options.adEnabled,adMinSeconds:this.options.adMinSeconds,adUnitId:this.options.adUnitId}};
+    const streak=daily?.streak??previous?.streak??0,dailyDay=daily?streak:streak+1;
+    const dailyAmount=daily?.amount??signInReward(dailyDay),start=Math.floor((dailyDay-1)/7)*7+1;
+    const dailyPreview=await Promise.all(Array.from({length:7},async(_,i)=>{
+      const day=start+i,claimed=day<=streak,daysAgo=dailyDay-day;
+      const record=!claimed?null:daysAgo===0?daily:daysAgo===1?previous:
+        await this.db.get('daily_claims',id(uid,dayKey(now-daysAgo*86400_000)));
+      return {day,amount:record?.amount??signInReward(day),claimed};
+    }));
+    return {user:await this.db.get('users',uid),wallet:await this.wallet(this.db,uid),rules:RULES,mode:this.options.mode,rewards:{signed:!!daily,streak,dailyDay,dailyAmount,nextDailyAmount:signInReward(dailyDay+1),dailyPreview,adCount:usage?.count??0,adNextAmount:RULES.adRewards[usage?.count??0]??0,adEnabled:this.options.adEnabled,adMinSeconds:this.options.adMinSeconds,adUnitId:this.options.adUnitId}};
   }
 }

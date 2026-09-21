@@ -9,7 +9,9 @@ const clone=v=>v===undefined?undefined:JSON.parse(JSON.stringify(v));
 const storage=new Map(), timers=new Map(), modules=new Map();
 let definition, timer=0;
 const wx={getStorageSync:k=>clone(storage.get(k)),setStorageSync:(k,v)=>storage.set(k,clone(v)),removeStorageSync:k=>storage.delete(k),showToast:()=>{},showModal:async()=>({confirm:true}),vibrateShort:()=>{},stopPullDownRefresh:()=>{},setClipboardData:()=>{},switchTab:()=>{}};
-const context=vm.createContext({wx,console,Page:v=>{definition=v;},setTimeout:f=>{queueMicrotask(f);return ++timer;},setInterval:f=>{timers.set(++timer,f);return timer;},clearTimeout:()=>{},clearInterval:id=>timers.delete(id)});
+const clock={now:Date.now()};
+const context=vm.createContext({wx,console,clock,Page:v=>{definition=v;},setTimeout:f=>{queueMicrotask(f);return ++timer;},setInterval:f=>{timers.set(++timer,f);return timer;},clearTimeout:()=>{},clearInterval:id=>timers.delete(id)});
+vm.runInContext('const RealDate = Date; Date = class extends RealDate { static now() { return clock.now; } };',context);
 function load(file){
   file=path.resolve(file.endsWith('.js')?file:file+'.js');
   if(!file.startsWith(root+path.sep))throw Error('模块超出小程序目录');
@@ -27,12 +29,26 @@ game.add(event('SMALL_0'));game.add(event('SINGLE_2'));capture('game-selected','
 game.setData({phase:'shaking',rolling:true});capture('game-shaking','game',game);game.setData({phase:'idle',rolling:false});
 await game.play();capture('game-result','game',game);
 game.toggleDetails();capture('game-details','game',game);
-const wallet=await page('wallet');await wallet.sign();capture('wallet','wallet',wallet);
+const wallet=await page('wallet');capture('wallet-before-sign','wallet',wallet);await wallet.sign();capture('wallet','wallet',wallet);
+wallet.toggleSignRules();capture('wallet-sign-rules','wallet',wallet);wallet.toggleSignRules();
 await wallet.watch();capture('wallet-ad','wallet',wallet);wallet.cancelDemo();
+await wallet.onShareAppMessage().promise;await wallet.onShow();capture('wallet-share-pending','wallet',wallet);
+await wallet.confirmShare();capture('wallet-share-claimed','wallet',wallet);
+for(let count=1;count<=3;count++){
+  clock.now+=16000;await wallet.watch();clock.now+=6000;for(const f of timers.values())f();
+  capture(`wallet-ad-ready-${count}`,'wallet',wallet);await wallet.completeDemo();capture(`wallet-ad-claimed-${count}`,'wallet',wallet);
+}
 const ranking=await page('ranking');capture('ranking','ranking',ranking);ranking.manage();capture('ranking-manage','ranking',ranking);
+await ranking.onShareAppMessage().promise;await ranking.onShow();capture('ranking-share-pending','ranking',ranking);
 ranking.input({detail:{value:'invalid-invite'}});await ranking.accept();capture('ranking-error','ranking',ranking);
 const profile=await page('profile');capture('profile','profile',profile);profile.edit();profile.input({detail:{value:'x'}});await profile.save();capture('profile-error','profile',profile);
 profile.setData({editing:false,nickname:'一二三四五六七八九十甲乙'});capture('profile-long-name','profile',profile);
+for(let day=2;day<=101;day++){
+  clock.now+=86400_000;
+  await wallet.load();
+  if([30,66,88,100,101].includes(day))capture(`wallet-day-${day}`,'wallet',wallet);
+  await wallet.sign();
+}
 const read=file=>fs.readFileSync(path.join(root,file),'utf8');
 const base=read('styles/tokens.wxss')+'\n'+read('app.wxss').replace(/@import[^;]+;/g,'')+'\n'+read('components/dice/index.wxss');
 let diceDefinition;vm.runInNewContext(read('components/dice/index.js'),{Component:v=>{diceDefinition=v;}});

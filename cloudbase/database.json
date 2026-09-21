@@ -1,7 +1,7 @@
 {
   "mode":"traditional-document-database",
   "description":"手动按此清单创建集合与索引；不是可直接上传的 CloudBase 部署配置。所有集合禁止小程序客户端直读直写。",
-  "collections":["users","wallets","wallet_ledgers","rounds","daily_claims","ad_sessions","ad_usage","friend_lists","friend_invites","invite_requests"],
+  "collections":["users","wallets","wallet_ledgers","rounds","daily_claims","ad_sessions","ad_usage","share_sessions","friend_lists","friend_invites","invite_requests"],
   "securityRules":{"read":false,"write":false},
   "indexes":[
     {"collection":"wallet_ledgers","name":"user_seq","unique":true,"fields":[{"field":"userId","order":"asc"},{"field":"seq","order":"desc"}]},
