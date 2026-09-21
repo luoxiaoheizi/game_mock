@@ -1,11 +1,22 @@
 import {api,refresh,toast,storageKey,dateText} from '../../services/api';
 import {config} from '../../config';
 import {beginShare,pendingShare} from '../../services/shares';
+import type {RankingBoard,RankingRow,FriendRankings} from '../../../../packages/contracts';
+type DisplayRow=RankingRow&{initial:string;metric:string};
 Page({
-  data:{demo:config.mode==='demo',items:[] as any[],myRank:0,invite:'',incoming:'',busy:false,loading:false,managing:false,error:'',inviteError:'',asOf:'',ready:false,pendingShare:false},
+  data:{demo:config.mode==='demo',board:'winRate' as RankingBoard,boards:{winRate:[],turnover:[]} as FriendRankings['boards'],items:[] as DisplayRow[],myRank:0,rankedCount:0,invite:'',incoming:'',busy:false,loading:false,managing:false,error:'',inviteError:'',asOf:'',ready:false,pendingShare:false},
+  loadSequence:0,
+  onLoad(){const board=wx.getStorageSync(storageKey('ranking-board'));if(board==='winRate'||board==='turnover')this.setData({board});},
   async onShow(){this.setData({pendingShare:!!pendingShare()});const incoming=wx.getStorageSync(storageKey('incoming-invite'))||'';if(incoming)this.setData({incoming});await this.load();},
   async onPullDownRefresh(){try{await this.load();}finally{wx.stopPullDownRefresh();}},
-  async load(){this.setData({loading:true});try{await refresh();const r=await api('ranking.listFriends');this.setData({items:r.items.map((v:any)=>({...v,initial:[...v.nickname][0]})),myRank:r.items.find((v:any)=>v.isMe)?.rank||0,asOf:dateText(r.asOf),ready:true,error:''});}catch(e){this.setData({error:(e as Error).message});}finally{this.setData({loading:false});}},
+  async load(){
+    const sequence=++this.loadSequence;this.setData({loading:true});
+    try{await refresh();const r=await api('ranking.listFriends') as FriendRankings;if(sequence!==this.loadSequence)return;this.setData({boards:r.boards,asOf:dateText(r.asOf),ready:true,error:''});this.renderBoard();}
+    catch(e){if(sequence===this.loadSequence)this.setData({error:(e as Error).message});}
+    finally{if(sequence===this.loadSequence)this.setData({loading:false});}
+  },
+  changeBoard(e:any){const board=e.currentTarget.dataset.board;if(board!=='winRate'&&board!=='turnover')return;this.setData({board});wx.setStorageSync(storageKey('ranking-board'),board);this.renderBoard();},
+  renderBoard(){const items=this.data.boards[this.data.board].map(v=>({...v,initial:[...v.nickname][0],metric:this.data.board==='winRate'?(v.winRate===null?'—':`${(v.winRate*100).toFixed(1)}%`):String(v.totalStake)}));this.setData({items,myRank:items.find(v=>v.isMe)?.rank||0,rankedCount:items.filter(v=>v.rank!==null).length});},
   input(e:any){this.setData({incoming:e.detail.value.trim(),inviteError:''});},
   manage(){this.setData({managing:!this.data.managing});},
   async create(){if(this.data.busy)return;this.setData({busy:true});try{const r=await api('friend.createInvite');this.setData({invite:r.token});}catch(e){toast(e);}finally{this.setData({busy:false});}},

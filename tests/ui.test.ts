@@ -6,7 +6,7 @@ import path from 'node:path';
 const root=path.resolve('dist/miniprogram');
 function harness(){
   const storage=new Map<string,any>(),timers=new Map<number,()=>void>(),clock={now:Date.parse('2026-09-20T04:00:00Z')};
-  let definition:any,timerId=0;
+  let definition:any,timerId=0,failedAction='';
   const messages:string[]=[],clone=(v:any)=>v===undefined?undefined:JSON.parse(JSON.stringify(v));
   const wx:any={
     getStorageSync:(k:string)=>clone(storage.get(k)),setStorageSync:(k:string,v:any)=>storage.set(k,clone(v)),removeStorageSync:(k:string)=>storage.delete(k),
@@ -21,10 +21,10 @@ function harness(){
     if(modules.has(filename))return modules.get(filename).exports;
     const module={exports:{}};modules.set(filename,module);
     const factory=vm.runInContext(`(function(require,module,exports){${fs.readFileSync(filename,'utf8')}\n})`,context,{filename});
-    factory((p:string)=>load(path.resolve(path.dirname(filename),p)),module,module.exports);return module.exports;
+    factory((p:string)=>{const loaded=load(path.resolve(path.dirname(filename),p));return p.endsWith('/api')?new Proxy(loaded,{get(target,key){if(key==='api'&&failedAction)return async(action:string,...args:any[])=>{if(action===failedAction)throw Error('模拟网络失败');return target.api(action,...args);};return Reflect.get(target,key);}}):loaded;},module,module.exports);return module.exports;
   }
   function page(name:string){load(path.join(root,'pages',name,'index.js'));const instance={...definition,data:clone(definition.data),setData(values:any){Object.assign(this.data,clone(values));}};instance.onLoad?.();return instance;}
-  return {page,wx,storage,messages,api:()=>load(path.join(root,'services/api.js')),advance:(ms:number)=>{clock.now+=ms;for(const f of timers.values())f();}};
+  return {page,wx,storage,messages,api:()=>load(path.join(root,'services/api.js')),failApi:(action:string)=>{failedAction=action;},advance:(ms:number)=>{clock.now+=ms;for(const f of timers.values())f();}};
 }
 
 test('广告三档奖励在观看前、观看中和到账后同步，跳过不升级',async()=>{
@@ -75,7 +75,7 @@ test('编译产物四页集成：下注、钱包、签到、广告、改昵称�
   h.advance(16000);await wallet.watch();h.advance(6000);assert.equal(wallet.data.remaining,0);await wallet.completeDemo();assert.equal(wallet.data.balance,afterBet+300);assert.equal(wallet.data.rewards.adCount,1);
   const profile=h.page('profile');await profile.onShow();profile.edit();profile.input({detail:{value:'小熊好运'}});await profile.save();assert.equal(profile.data.nickname,'小熊好运');
   const ranking=h.page('ranking');await ranking.onShow();assert.equal(ranking.data.items.length,3);
-  const me=ranking.data.items.find((v:any)=>v.isMe);assert.equal(me.nickname,'小熊好运');assert.equal(me.balance,afterBet+300);
+  const me=ranking.data.items.find((v:any)=>v.isMe);assert.equal(me.nickname,'小熊好运');assert.equal(me.rounds,1);assert.equal(me.totalStake,10);
   await game.onShow();assert.equal(game.data.balance,afterBet+300);
   assert.ok(h.storage.has('dice-club-demo-v1'));
 });
@@ -175,4 +175,19 @@ test('钱包展示按天变化的签到奖励、完整奖励表和断签重置',
     if(day<10)h.advance(86400_000);
   }
   h.advance(2*86400_000);await wallet.load();assert.equal(wallet.data.rewards.dailyDay,1);assert.equal(wallet.data.rewards.dailyAmount,100);
+});
+
+test('两个好友榜切换显示对应指标，保留选项，零局不排名，刷新失败保留榜单',async()=>{
+  const h=harness(),ranking=h.page('ranking');await ranking.onShow();
+  assert.equal(ranking.data.board,'winRate');assert.equal(ranking.data.myRank,0);
+  assert.ok(ranking.data.items.every((v:any)=>v.metric==='—'&&v.rank===null));
+  await h.api().api('game.play',{ruleVersion:'sicbo-v1',bets:[{type:'SMALL',stake:10},{type:'BIG',stake:10}]});
+  await ranking.load();const me=ranking.data.items.find((v:any)=>v.isMe);
+  assert.equal(me.metric,'0.0%');assert.equal(me.profitWins,0);assert.equal(ranking.data.myRank,1);
+  ranking.manage();ranking.changeBoard({currentTarget:{dataset:{board:'turnover'}}});
+  assert.equal(ranking.data.items.find((v:any)=>v.isMe).metric,'20');assert.equal(ranking.data.managing,true);
+  await ranking.onShow();assert.equal(ranking.data.board,'turnover');
+  const before=JSON.stringify(ranking.data.items);h.failApi('ranking.listFriends');
+  await ranking.load();assert.equal(JSON.stringify(ranking.data.items),before);assert.equal(ranking.data.error,'模拟网络失败');
+  ranking.changeBoard({currentTarget:{dataset:{board:'winRate'}}});assert.equal(ranking.data.items.find((v:any)=>v.isMe).metric,'0.0%');
 });

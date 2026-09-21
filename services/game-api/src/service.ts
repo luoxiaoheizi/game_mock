@@ -1,5 +1,5 @@
 import {BusinessError,check,dayKey,normalizeBets,RULES,settle,signInReward,validNickname} from '../../../packages/domain';
-import type {Request,Response,Wallet,User} from '../../../packages/contracts';
+import type {Request,Response,Wallet,User,RankingRow,FriendRankings} from '../../../packages/contracts';
 import type {Store,Tx} from './store';
 
 export interface Options {
@@ -30,6 +30,26 @@ export class GameService {
   private async wallet(tx:Tx,uid:string):Promise<Wallet> {
     const w=await tx.get<Wallet>('wallets',uid); check(w,'UNAUTHENTICATED','请先初始化用户'); return w;
   }
+  private async rankingWallet(uid:string):Promise<Wallet> {
+    const snapshot=await this.wallet(this.db,uid);
+    if(snapshot.profitWins!==undefined)return snapshot;
+    // 旧 wins 是命中局数。按局序号固定补算范围，奖励入账不影响此统计。
+    let before=snapshot.rounds+1,seen=0,profitWins=0;
+    while(before>1){
+      const rounds=await this.db.list('rounds',{userId:uid},'seq',100,before);
+      if(!rounds.length)break;
+      for(const round of rounds){seen++;if(round.netChange>0)profitWins++;}
+      before=rounds[rounds.length-1].seq;
+    }
+    check(seen===snapshot.rounds,'STATS_INCOMPLETE','历史对局记录不完整，暂时无法计算胜率');
+    return this.db.transaction(async tx=>{
+      const current=await this.wallet(tx,uid);
+      if(current.profitWins!==undefined)return current;
+      if(current.rounds!==snapshot.rounds)throw new BusinessError('STATS_CHANGED','对局数据刚刚更新，请刷新排行榜',true);
+      current.profitWins=profitWins;current.version++;
+      await tx.set('wallets',uid,current);return current;
+    });
+  }
   private async ledger(tx:Tx,w:Wallet,kind:string,delta:number,businessId:string,now:number) {
     const balance=w.balance+delta;
     check(Number.isSafeInteger(balance)&&balance>=0&&balance<=RULES.maxBalance,'BALANCE_LIMIT','积分余额超出允许范围');
@@ -43,7 +63,7 @@ export class GameService {
         await this.db.transaction(async tx=>{
           if(await tx.get('users',uid)) return;
           await tx.set('users',uid,{userId:uid,nickname:`玩家${uid.slice(-4)}`,createdAt:now,profileVersion:1});
-          const w:Wallet={userId:uid,balance:0,version:1,ledgerSeq:0,rounds:0,wins:0,totalStake:0,totalPayout:0,lastPlayAt:0};
+          const w:Wallet={userId:uid,balance:0,version:1,ledgerSeq:0,rounds:0,wins:0,profitWins:0,totalStake:0,totalPayout:0,lastPlayAt:0};
           await this.ledger(tx,w,'WELCOME',RULES.initial,'welcome',now);
           await tx.set('wallets',uid,w);
           await tx.set('friend_lists',uid,{ids:[],lastInviteAt:0});
@@ -78,6 +98,7 @@ export class GameService {
           await this.ledger(tx,w,'BET_DEBIT',-result.stakeTotal,key,now);
           if(result.payoutTotal>0) await this.ledger(tx,w,'BET_PAYOUT',result.payoutTotal,key,now);
           w.version++;w.rounds++;w.wins+=result.payoutTotal>0?1:0;w.totalStake+=result.stakeTotal;w.totalPayout+=result.payoutTotal;w.lastPlayAt=now;
+          if(w.profitWins!==undefined)w.profitWins+=result.netChange>0?1:0;
           await tx.set('wallets',uid,w);
           const round={...result,roundId:key,requestId:r.requestId,userId:uid,ruleVersion:RULES.version,fingerprint,createdAt:now,seq:w.rounds,wallet:w};
           await tx.set('rounds',key,round);return round;
@@ -186,15 +207,17 @@ export class GameService {
       }
       case 'ranking.listFriends': {
         const list=await this.db.get('friend_lists',uid);check(list,'UNAUTHENTICATED','请先初始化用户');
-        const rows=[];
+        const rows:RankingRow[]=[];
         // 小规模榜单分批读取，限制并发和最大好友数量。
         const ids=[uid,...list.ids].slice(0,51);
         for(let i=0;i<ids.length;i+=8) rows.push(...await Promise.all(ids.slice(i,i+8).map(async (friendId:string)=>{
-          const u=await this.db.get<User>('users',friendId),w=await this.wallet(this.db,friendId);
-          return {userId:friendId,nickname:u?.nickname??'玩家',balance:w.balance,isMe:friendId===uid};
+          const u=await this.db.get<User>('users',friendId),w=await this.rankingWallet(friendId);
+          return {userId:friendId,nickname:u?.nickname??'玩家',isMe:friendId===uid,rounds:w.rounds,profitWins:w.profitWins!,totalStake:w.totalStake,winRate:w.rounds?w.profitWins!/w.rounds:null,rank:null};
         })));
-        rows.sort((a,b)=>b.balance-a.balance||a.userId.localeCompare(b.userId));
-        return {items:rows.map((v,i)=>({...v,rank:i+1})),asOf:now};
+        const rank=(sorted:RankingRow[])=>sorted.map((v,i)=>({...v,rank:v.rounds?i+1:null}));
+        const winRate=rank([...rows].sort((a,b)=>(b.winRate??-1)-(a.winRate??-1)||b.rounds-a.rounds||a.userId.localeCompare(b.userId)));
+        const turnover=rank([...rows].sort((a,b)=>b.totalStake-a.totalStake||a.userId.localeCompare(b.userId)));
+        return {boards:{winRate,turnover},asOf:now} satisfies FriendRankings;
       }
       default: throw new BusinessError('INVALID_ACTION','接口不存在');
     }

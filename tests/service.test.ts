@@ -14,6 +14,55 @@ function fixture(){
 }
 const play={ruleVersion:RULES.version,bets:[{type:'BIG',stake:100}]};
 
+test('胜率榜按净盈利而非命中，流水榜按累计下注，奖励不改变排名',async()=>{
+  const f=fixture(),ids=['player_0001','player_0002','player_0003','player_0004'];
+  for(const uid of ids)await f.ok('user.bootstrap',{},undefined,uid);
+  for(const uid of ids.slice(1)){const invite=await f.ok('friend.createInvite',{},undefined,uid);await f.ok('friend.acceptInvite',{token:invite.token});}
+  f.dice([1,2,3]);
+  await f.ok('game.play',{ruleVersion:RULES.version,bets:[{type:'SMALL',stake:100}]});
+  await f.ok('game.play',{ruleVersion:RULES.version,bets:[{type:'SMALL',stake:10},{type:'BIG',stake:100}]});
+  await f.ok('game.play',{ruleVersion:RULES.version,bets:[{type:'SMALL',stake:10}]},undefined,ids[1]);
+  await f.ok('game.play',{ruleVersion:RULES.version,bets:[{type:'SMALL',stake:100},{type:'BIG',stake:100}]},undefined,ids[2]);
+  const before=await f.ok('ranking.listFriends');
+  assert.deepEqual(before.boards.winRate.map((v:any)=>v.userId),[ids[1],ids[0],ids[2],ids[3]]);
+  assert.deepEqual(before.boards.turnover.map((v:any)=>v.userId),[ids[0],ids[2],ids[1],ids[3]]);
+  const me=before.boards.winRate.find((v:any)=>v.isMe);assert.equal(me.profitWins,1);assert.equal(me.rounds,2);assert.equal(me.winRate,0.5);assert.equal(me.totalStake,210);
+  assert.equal(before.boards.winRate[2].winRate,0);assert.equal(before.boards.winRate[3].winRate,null);assert.equal(before.boards.winRate[3].rank,null);
+  await f.ok('wallet.claimDaily');const share=await f.ok('share.start');await f.ok('share.claim',{sessionId:share.sessionId,confirmed:true});
+  assert.deepEqual((await f.ok('ranking.listFriends')).boards,before.boards);
+});
+
+test('旧钱包从历史局补算盈利局数且只补算一次，保留余额和已有命中统计',async()=>{
+  const f=fixture();await f.ok('user.bootstrap');f.dice([1,2,3]);
+  await f.ok('game.play',{ruleVersion:RULES.version,bets:[{type:'SMALL',stake:10}]});
+  await f.ok('game.play',{ruleVersion:RULES.version,bets:[{type:'SMALL',stake:10},{type:'BIG',stake:100}]});
+  const w=await f.db.get('wallets','player_0001');delete w.profitWins;await f.db.set('wallets','player_0001',w);
+  const rows=(await f.ok('ranking.listFriends')).boards.winRate;assert.equal(rows[0].profitWins,1);
+  const after=await f.db.get('wallets','player_0001');assert.equal(after.balance,w.balance);assert.equal(after.wins,2);assert.equal(after.profitWins,1);
+  const version=after.version;await f.ok('ranking.listFriends');assert.equal((await f.db.get('wallets','player_0001')).version,version);
+  await f.ok('game.play',{ruleVersion:RULES.version,bets:[{type:'SMALL',stake:10}]});assert.equal((await f.db.get('wallets','player_0001')).profitWins,2);
+});
+
+test('补算期间新对局不丢统计或积分，下次刷新可恢复',async()=>{
+  const f=fixture();await f.ok('user.bootstrap');f.dice([1,2,3]);
+  await f.ok('game.play',{ruleVersion:RULES.version,bets:[{type:'SMALL',stake:10}]});
+  const w=await f.db.get('wallets','player_0001');delete w.profitWins;await f.db.set('wallets','player_0001',w);
+  const list=f.db.list.bind(f.db);let once=true;
+  f.db.list=async(...args)=>{const rows=await list(...args);if(args[0]==='rounds'&&once){once=false;await f.ok('game.play',{ruleVersion:RULES.version,bets:[{type:'SMALL',stake:10}]});}return rows;};
+  const r=await f.call('ranking.listFriends');assert.equal(r.ok,false);assert.ok(!r.ok&&r.error.retryable);
+  const ranking=await f.ok('ranking.listFriends');assert.equal(ranking.boards.winRate[0].profitWins,2);assert.equal((await f.ok('wallet.get')).wallet.balance,520);
+});
+
+test('旧胜率补算覆盖多页历史，记录缺失时不写入错误统计',async()=>{
+  const f=fixture();await f.ok('user.bootstrap');f.dice([1,2,3]);
+  for(let i=0;i<105;i++)await f.ok('game.play',{ruleVersion:RULES.version,bets:[{type:'SMALL',stake:10}]});
+  const w=await f.db.get('wallets','player_0001');delete w.profitWins;await f.db.set('wallets','player_0001',w);
+  assert.equal((await f.ok('ranking.listFriends')).boards.winRate[0].profitWins,105);
+  await f.db.set('wallets','player_0001',w);delete f.db.data.rounds[Object.keys(f.db.data.rounds)[0]];
+  const r=await f.call('ranking.listFriends');assert.ok(!r.ok&&r.error.code==='STATS_INCOMPLETE');
+  assert.equal((await f.db.get('wallets','player_0001')).profitWins,undefined);
+});
+
 test('分享自报确认每笔100分、不限次数，未确认及跨账号不能领，同笔并发只到账一次',async()=>{
   const f=fixture();await f.ok('user.bootstrap');
   assert.equal((await f.call('share.claim',{sessionId:'missing_share',confirmed:true})).ok,false);
@@ -116,7 +165,7 @@ test('昵称更新同步显示到好友榜，版本冲突不覆盖',async()=>{
   const invite=await f.ok('friend.createInvite',{},undefined,'player_0002');
   await f.ok('friend.acceptInvite',{token:invite.token});
   await f.ok('user.updateNickname',{nickname:'幸运小骰',profileVersion:1});
-  const rows=(await f.ok('ranking.listFriends',{},undefined,'player_0002')).items;
+  const rows=(await f.ok('ranking.listFriends',{},undefined,'player_0002')).boards.winRate;
   assert.equal(rows.find((v:any)=>v.userId==='player_0001').nickname,'幸运小骰');
   assert.equal((await f.call('user.updateNickname',{nickname:'旧的昵称',profileVersion:1})).ok,false);
 });
@@ -125,10 +174,10 @@ test('邀请防自邀、过期、重复使用，接受和删除关系双向一�
   const invite=await f.ok('friend.createInvite');
   assert.equal((await f.call('friend.acceptInvite',{token:invite.token})).ok,false);
   await Promise.all(Array.from({length:8},()=>f.ok('friend.acceptInvite',{token:invite.token},undefined,'player_0002')));
-  assert.equal((await f.ok('ranking.listFriends')).items.length,2);
+  assert.equal((await f.ok('ranking.listFriends')).boards.winRate.length,2);
   assert.equal((await f.call('friend.acceptInvite',{token:invite.token},undefined,'player_0003')).ok,false);
   await f.ok('friend.remove',{userId:'player_0002'});
-  assert.equal((await f.ok('ranking.listFriends',{},undefined,'player_0002')).items.length,1);
+  assert.equal((await f.ok('ranking.listFriends',{},undefined,'player_0002')).boards.winRate.length,1);
   f.advance(20_000);const expired=await f.ok('friend.createInvite');f.advance(86400_001);assert.equal((await f.call('friend.acceptInvite',{token:expired.token},undefined,'player_0003')).ok,false);
 });
 test('其他用户查不到局记录，伪造 payload.userId 不改变调用身份',async()=>{

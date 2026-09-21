@@ -39,6 +39,10 @@ for(let count=1;count<=3;count++){
   capture(`wallet-ad-ready-${count}`,'wallet',wallet);await wallet.completeDemo();capture(`wallet-ad-claimed-${count}`,'wallet',wallet);
 }
 const ranking=await page('ranking');capture('ranking','ranking',ranking);ranking.manage();capture('ranking-manage','ranking',ranking);
+ranking.changeBoard({currentTarget:{dataset:{board:'turnover'}}});capture('ranking-turnover-manage','ranking',ranking);ranking.manage();capture('ranking-turnover','ranking',ranking);
+const originalBoards=clone(ranking.data.boards);
+ranking.setData({boards:{...originalBoards,turnover:originalBoards.turnover.map(v=>({...v,nickname:'一二三四五六七八九十甲乙',totalStake:1234567890123}))}});ranking.renderBoard();capture('ranking-long-values','ranking',ranking);
+ranking.setData({boards:originalBoards});ranking.changeBoard({currentTarget:{dataset:{board:'winRate'}}});
 await ranking.onShareAppMessage().promise;await ranking.onShow();capture('ranking-share-pending','ranking',ranking);
 ranking.input({detail:{value:'invalid-invite'}});await ranking.accept();capture('ranking-error','ranking',ranking);
 const profile=await page('profile');capture('profile','profile',profile);profile.edit();profile.input({detail:{value:'x'}});await profile.save();capture('profile-error','profile',profile);
